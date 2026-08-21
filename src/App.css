@@ -5,6 +5,7 @@
   padding: 1rem;
   max-width: 1280px;
   margin: 0 auto;
+  width: min(100%, 1280px);
 }
 
 .panel {
@@ -60,6 +61,7 @@ h1 {
 
 .calendar-panel {
   padding: 1rem;
+  min-width: 0;
 }
 
 .weekday-row {
@@ -71,13 +73,13 @@ h1 {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 700;
+  text-align: center;
 }
 
 .weekday-row .weekend-column {
   background: rgba(15, 23, 42, 0.08);
   border-radius: 10px;
   padding: 0.2rem 0.35rem;
-  text-align: center;
 }
 
 .calendar-grid {
@@ -88,7 +90,7 @@ h1 {
 }
 
 .day-cell {
-  border: 2px solid rgba(15, 23, 42, 0.18);
+  border: 3px solid rgba(15, 23, 42, 0.28);
   border-radius: 18px;
   min-height: 7.4rem;
   padding: 0.7rem;
@@ -98,6 +100,8 @@ h1 {
   flex-direction: column;
   justify-content: space-between;
   gap: 0.3rem;
+  min-width: 0;
+  overflow: hidden;
   transition:
     transform 160ms ease,
     box-shadow 180ms ease,
@@ -115,7 +119,7 @@ h1 {
 }
 
 .day-cell.drift {
-  box-shadow: inset 0 0 0 2px rgba(217, 119, 6, 0.24);
+  box-shadow: inset 0 0 0 3px rgba(217, 119, 6, 0.34);
 }
 
 .day-cell.weekend {
@@ -132,11 +136,11 @@ h1 {
 }
 
 .day-cell.today {
-  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.34);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.48);
 }
 
 .day-cell.deficit {
-  box-shadow: inset 0 0 0 2px rgba(185, 28, 28, 0.26);
+  box-shadow: inset 0 0 0 3px rgba(185, 28, 28, 0.36);
 }
 
 .day-topline {
@@ -144,6 +148,20 @@ h1 {
   justify-content: space-between;
   align-items: center;
   gap: 0.4rem;
+  min-width: 0;
+}
+
+.day-date {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.day-weekday {
+  display: none;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 400;
+  margin-right: 0.25rem;
 }
 
 .badge.checkpoint {
@@ -162,11 +180,31 @@ h1 {
 
 .day-balance {
   font-weight: 700;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+
+.mobile-balance {
+  display: none;
+}
+
+.mobile-money-sign,
+.mobile-currency {
+  font-size: 0.42em;
+  vertical-align: super;
+  line-height: 1;
+}
+
+.mobile-currency {
+  margin-right: 0.06em;
 }
 
 .cash-amount {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  max-width: 100%;
 }
 
 .cash-cents {
@@ -263,6 +301,8 @@ button {
     background-color 180ms ease,
     color 180ms ease,
     opacity 180ms ease;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 button:focus-visible,
@@ -348,6 +388,19 @@ select:focus-visible {
   justify-content: space-between;
   align-items: center;
   gap: 0.8rem;
+}
+
+.modal-header-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
 }
 
 .modal-tabs {
@@ -463,6 +516,22 @@ select:focus-visible {
   gap: 0.55rem;
 }
 
+.show-more-button {
+  margin-top: 0;
+}
+
+.upcoming-footer-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.back-to-top-button {
+  margin-left: auto;
+}
+
 .event-list li {
   padding: 0.65rem 0.75rem;
   background: rgba(15, 23, 42, 0.05);
@@ -484,6 +553,7 @@ select:focus-visible {
   gap: 0.35rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .item-main {
@@ -577,5 +647,146 @@ select:focus-visible {
 
   .account-row {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .app-shell {
+    gap: 0.7rem;
+    padding: 0.6rem;
+  }
+
+  .panel,
+  .calendar-panel {
+    border-radius: 16px;
+  }
+
+  .toolbar,
+  .calendar-panel,
+  .monthly-overview {
+    padding: 0.75rem;
+  }
+
+  .toolbar {
+    gap: 0.75rem;
+  }
+
+  .toolbar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+
+  .toolbar-actions label,
+  .toolbar-actions button {
+    min-width: 0;
+  }
+
+  .toolbar-actions label {
+    gap: 0.2rem;
+  }
+
+  .toolbar-actions input,
+  .toolbar-actions select,
+  .toolbar-actions button {
+    width: 100%;
+    min-height: 2.5rem;
+  }
+
+  .toolbar-actions button {
+    padding: 0.45rem 0.5rem;
+    line-height: 1.15;
+  }
+
+  .calendar-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.45rem;
+    margin-top: 0.45rem;
+  }
+
+  .day-cell {
+    min-height: 3.5em;
+    height: 4em;
+    padding: 0.28rem;
+    border-width: 2px;
+    border-radius: 10px;
+  }
+
+  .day-balance {
+    font-size: clamp(0.54rem, 2.6vw, 0.76rem);
+    letter-spacing: -0.01em;
+    overflow: visible;
+    overflow-wrap: normal;
+    white-space: nowrap;
+  }
+
+  .day-meta {
+    display: none;
+  }
+
+  .badge.checkpoint {
+    padding: 0.12rem 0.3rem;
+    font-size: 0.6rem;
+  }
+
+  .status-strip {
+    padding: 0.7rem 0.75rem;
+    font-size: 0.82rem;
+  }
+
+  .event-list li {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .item-actions {
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+
+  .modal-backdrop {
+    padding: 0.5rem;
+  }
+
+  .modal-card {
+    padding: 0.75rem;
+    max-height: calc(100vh - 1rem);
+  }
+
+  .modal-header {
+    align-items: flex-start;
+  }
+
+  .modal-header-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .modal-header-actions .icon-button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .desktop-balance {
+    display: none;
+  }
+
+  .mobile-balance {
+    display: inline-block;
+    max-width: 100%;
+    white-space: nowrap;
+  }
+
+  .modal-tabs {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .modal-tabs .tab {
+    width: 100%;
   }
 }

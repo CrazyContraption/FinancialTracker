@@ -196,6 +196,60 @@ function formatCashParts(amount: number) {
   }
 }
 
+function formatMobileBalance(amount: number) {
+  const sign = amount < 0 ? '-' : ''
+  const absoluteAmount = Math.abs(amount)
+  let value = Math.round(absoluteAmount).toLocaleString('en-US')
+  if (absoluteAmount >= 1_000_000_000) {
+    value = `${(absoluteAmount / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`
+  } else if (absoluteAmount >= 1_000_000) {
+    value = `${(absoluteAmount / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  } else if (absoluteAmount >= 1_000) {
+    value = `${(absoluteAmount / 1_000).toFixed(1).replace(/\.0$/, '')}K`
+  }
+
+  return { sign, value }
+}
+
+function MobileBalance({ amount }: { amount: number }) {
+  const balanceRef = useRef<HTMLSpanElement>(null)
+  const formatted = formatMobileBalance(amount)
+
+  useEffect(() => {
+    const balanceElement = balanceRef.current
+    if (!balanceElement) {
+      return
+    }
+
+    const resizeBalance = () => {
+      balanceElement.style.fontSize = '0.76rem'
+      const availableWidth = balanceElement.parentElement?.clientWidth ?? 0
+      const requiredWidth = balanceElement.scrollWidth
+      if (availableWidth > 0 && requiredWidth > availableWidth) {
+        const fittedSize = Math.max(0.35, 0.76 * (availableWidth / requiredWidth))
+        balanceElement.style.fontSize = `${fittedSize}rem`
+      }
+    }
+
+    resizeBalance()
+    const observer = new ResizeObserver(resizeBalance)
+    observer.observe(balanceElement.parentElement ?? balanceElement)
+    window.addEventListener('resize', resizeBalance)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', resizeBalance)
+    }
+  }, [amount])
+
+  return (
+    <span ref={balanceRef} className="mobile-balance">
+      <span className="mobile-money-sign">{formatted.sign}</span>
+      <span className="mobile-currency">$</span>
+      {formatted.value}
+    </span>
+  )
+}
+
 function ordinalSuffix(value: number) {
   if (value % 100 >= 11 && value % 100 <= 13) {
     return 'th'
@@ -602,6 +656,7 @@ function App() {
   })
   const [driftThresholdInput, setDriftThresholdInput] = useState('1,000.00')
   const [modalDate, setModalDate] = useState<string | null>(null)
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false)
   const [modalTab, setModalTab] = useState<ModalTab>('day')
   const [accountsModalOpen, setAccountsModalOpen] = useState(false)
   const [editingStreamId, setEditingStreamId] = useState<string | null>(null)
@@ -880,8 +935,33 @@ function App() {
               ? undefined
               : sourceStreamIdFromEvent(event.id, event.kind),
         })))
-      .slice(0, 10)
   }, [projection.days, selectedAccountId]) as UpcomingItem[]
+  const visibleUpcomingItems = mainUpcomingItems.slice(0, showAllUpcoming ? 30 : 10)
+
+  useEffect(() => {
+    setShowAllUpcoming(false)
+  }, [mainUpcomingItems])
+
+  function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const cashFlowDates = useMemo(() => Object.values(projection.days)
+    .filter((day) => day.events.some((event) => event.kind !== 'interest'))
+    .map((day) => day.date)
+    .filter((date, index, dates) => dates[index - 1] !== date), [projection.days])
+
+  function moveModalDay(direction: -1 | 1) {
+    if (!modalDate) {
+      return
+    }
+
+    const currentIndex = cashFlowDates.indexOf(modalDate)
+    const nextDate = cashFlowDates[currentIndex + direction]
+    if (nextDate) {
+      openDayModal(nextDate)
+    }
+  }
 
   function openDayModal(dateKey: string, tab: ModalTab = 'day') {
     setModalDate(dateKey)
@@ -1401,10 +1481,10 @@ function App() {
                 onClick={() => openDayModal(key)}
               >
                 <div className="day-topline">
-                  <span>{date.getDate()}</span>
+                  <span className="day-date"><span className="day-weekday">{weekdayLabels[date.getDay()]}</span>{date.getDate()}</span>
                   {hasDrift ? <span className="badge checkpoint">Drift</span> : null}
                 </div>
-                <strong className="day-balance">{balance === undefined ? 'No data' : <CashAmount amount={balance} />}</strong>
+                <strong className="day-balance">{balance === undefined ? <><span className="desktop-balance">No data</span><span className="mobile-balance">N/A</span></> : <><span className="desktop-balance"><CashAmount amount={balance} /></span><MobileBalance amount={balance} /></>}</strong>
                 <span className="day-meta">
                   {viewEvents.length ? `${viewEvents.length} event${viewEvents.length === 1 ? '' : 's'}` : 'No activity'}
                 </span>
@@ -1458,7 +1538,7 @@ function App() {
       <section className="panel calendar-panel">
         <h3>Upcoming events</h3>
         <ul className="event-list">
-          {mainUpcomingItems.map((item) => (
+          {visibleUpcomingItems.map((item) => (
             <li key={`${item.date}-${item.id}`}>
               <span>
                 {formatCompactDate(item.date)} · {item.label}
@@ -1479,6 +1559,16 @@ function App() {
           ))}
           {!mainUpcomingItems.length ? <li><span>None</span></li> : null}
         </ul>
+        <div className="upcoming-footer-actions">
+          {mainUpcomingItems.length > 10 && !showAllUpcoming ? (
+            <button type="button" className="secondary-button show-more-button" onClick={() => setShowAllUpcoming(true)}>
+              Show more
+            </button>
+          ) : <span />}
+          <button type="button" className="secondary-button back-to-top-button" onClick={scrollToTop}>
+            Back to top
+          </button>
+        </div>
       </section>
 
       {modalDate ? (
@@ -1489,7 +1579,11 @@ function App() {
                 <p className="eyebrow">Selected day</p>
                 <h2>{formatShortDate(modalDate)}</h2>
               </div>
-              <button type="button" className="icon-button" onClick={closeModal}>Close</button>
+              <div className="modal-header-actions">
+                <button type="button" className="icon-button" onClick={() => moveModalDay(-1)} disabled={!modalDate || cashFlowDates.indexOf(modalDate) <= 0}>Previous</button>
+                <button type="button" className="icon-button" onClick={() => moveModalDay(1)} disabled={!modalDate || cashFlowDates.indexOf(modalDate) === cashFlowDates.length - 1}>Next</button>
+                <button type="button" className="icon-button" onClick={closeModal}>Close</button>
+              </div>
             </header>
 
             <nav className="modal-tabs" aria-label="Day actions">
