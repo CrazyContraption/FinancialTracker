@@ -5,8 +5,18 @@
     <link rel="icon" type="image/svg+xml" href="/FinancialTracker/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Financial Planner</title>
-    <script type="module" crossorigin src="/FinancialTracker/assets/index-DPBWnHxz.js"></script>
-    <link rel="stylesheet" crossorigin href="/FinancialTracker/assets/index-CbZma5x3.css">
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem('finance-planner-theme')
+          document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light'
+        } catch {
+          document.documentElement.dataset.theme = 'light'
+        }
+      })()
+    </script>
+    <script type="module" crossorigin src="/FinancialTracker/assets/index-C-bNzoP6.js"></script>
+    <link rel="stylesheet" crossorigin href="/FinancialTracker/assets/index-CfkjQSjw.css">
   </head>
   <body>
     <div id="root"></div>
