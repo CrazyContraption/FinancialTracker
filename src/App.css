@@ -16,12 +16,23 @@
 }
 
 .toolbar {
+  position: relative;
   padding: 1rem;
   display: flex;
   justify-content: space-between;
   gap: 1rem;
   align-items: end;
   flex-wrap: wrap;
+}
+
+.toolbar > .theme-toggle {
+  position: absolute;
+  top: 2rem;
+  right: 1.2rem;
+}
+
+.toolbar > div:first-child {
+  padding-right: 4.5rem;
 }
 
 .eyebrow {
@@ -828,11 +839,25 @@ button:disabled {
     min-height: 2.5rem;
   }
 
-  .toolbar-actions .theme-toggle {
-    width: 3.6rem;
-    min-width: 3.6rem;
-    min-height: 2rem;
-    justify-self: start;
+  .toolbar-actions label {
+    grid-row: 1;
+  }
+
+  .toolbar-actions label + label {
+    grid-row: 1;
+  }
+
+  .toolbar-actions .secondary-button {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .toolbar-actions .toolbar-account-button {
+    grid-row: 2;
+  }
+
+  .toolbar-actions .utility-button {
+    grid-row: 3;
   }
 
   .toolbar-actions button {

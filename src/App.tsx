@@ -1397,6 +1397,16 @@ function App() {
           </div>
         </div>
 
+        <button
+          type="button"
+          className={`theme-toggle ${darkMode ? 'is-dark' : ''}`}
+          aria-pressed={darkMode}
+          aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          onClick={() => setDarkMode((current) => !current)}
+        >
+        </button>
+
         <div className="toolbar-actions">
           <label>
             Account view
@@ -1418,18 +1428,9 @@ function App() {
             />
           </label>
 
-          <button type="button" className="secondary-button" onClick={() => setAccountsModalOpen(true)}>Accounts</button>
-          <button type="button" className="utility-button" onClick={exportSnapshot}>Export</button>
+          <button type="button" className="secondary-button toolbar-account-button" onClick={() => setAccountsModalOpen(true)}>Accounts</button>
           <button type="button" className="utility-button" onClick={() => importInputRef.current?.click()}>Import</button>
-          <button
-            type="button"
-            className={`theme-toggle ${darkMode ? 'is-dark' : ''}`}
-            aria-pressed={darkMode}
-            aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-            title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-            onClick={() => setDarkMode((current) => !current)}
-          >
-          </button>
+          <button type="button" className="utility-button" onClick={exportSnapshot}>Export</button>
           <input
             ref={importInputRef}
             className="hidden-input"
