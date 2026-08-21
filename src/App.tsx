@@ -23,6 +23,7 @@ import type {
 type ModalTab = 'day' | 'transaction' | 'reconcile'
 type EditScope = 'future' | 'all'
 type DeleteScope = 'one' | 'series' | 'future'
+type ImportMode = 'merge' | 'overwrite'
 
 type PendingDelete = {
   item: UpcomingItem
@@ -93,6 +94,7 @@ const STORAGE_KEY = 'finance-planner-v2'
 const LEGACY_STORAGE_KEY = 'finance-planner-v1'
 const SELECTED_ACCOUNT_KEY = 'finance-planner-selected-account'
 const LAST_ACTIVE_ACCOUNT_KEY = 'finance-planner-last-active-account'
+const THEME_KEY = 'finance-planner-theme'
 const weekdayLabels = weekdayNames()
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -655,6 +657,7 @@ function App() {
     return snapshot.accounts[0]?.id ?? ''
   })
   const [driftThresholdInput, setDriftThresholdInput] = useState('1,000.00')
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem(THEME_KEY) === 'dark')
   const [modalDate, setModalDate] = useState<string | null>(null)
   const [showAllUpcoming, setShowAllUpcoming] = useState(false)
   const [modalTab, setModalTab] = useState<ModalTab>('day')
@@ -663,6 +666,12 @@ function App() {
   const [streamEditScope, setStreamEditScope] = useState<EditScope>('future')
   const [editingCheckpointId, setEditingCheckpointId] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
+    localStorage.setItem(THEME_KEY, darkMode ? 'dark' : 'light')
+  }, [darkMode])
 
   const [streamDraft, setStreamDraft] = useState<StreamDraft>({
     accountId: snapshot.accounts[0]?.id ?? '',
@@ -1328,7 +1337,7 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
-  async function importSnapshot(file: File) {
+  async function importSnapshot(file: File, mode: ImportMode) {
     const text = await file.text()
     const parsed = JSON.parse(text) as Partial<PlannerSnapshot>
     if (!Array.isArray(parsed.accounts) || !Array.isArray(parsed.streams) || !Array.isArray(parsed.checkpoints)) {
@@ -1336,11 +1345,37 @@ function App() {
     }
 
     const importedAccounts = normalizeAccounts(parsed.accounts)
-    setAccounts(importedAccounts)
-    setStreams(parsed.streams)
-    setCheckpoints(parsed.checkpoints)
+    if (mode === 'overwrite') {
+      setAccounts(importedAccounts)
+      setStreams(parsed.streams)
+      setCheckpoints(parsed.checkpoints)
+    } else {
+      const mergeById = <T extends { id: string }>(current: T[], imported: T[]) => {
+        const importedById = new Map(imported.map((item) => [item.id, item]))
+        return [...current.map((item) => importedById.get(item.id) ?? item), ...imported.filter((item) => !current.some((existing) => existing.id === item.id))]
+      }
+
+      setAccounts((current) => mergeById(current, importedAccounts))
+      setStreams((current) => mergeById(current, parsed.streams ?? []))
+      setCheckpoints((current) => mergeById(current, parsed.checkpoints ?? []))
+    }
+
     setStreamDraft((current) => ({ ...current, accountId: importedAccounts[0].id }))
     setReconcileDraft((current) => ({ ...current, accountId: importedAccounts[0].id }))
+    setPendingImportFile(null)
+  }
+
+  async function applyImport(mode: ImportMode) {
+    if (!pendingImportFile) {
+      return
+    }
+
+    try {
+      await importSnapshot(pendingImportFile, mode)
+    } catch {
+      setPendingImportFile(null)
+      alert('Unable to import that file. Please use a planner export JSON file.')
+    }
   }
 
   return (
@@ -1396,6 +1431,15 @@ function App() {
           <button type="button" className="secondary-button" onClick={() => setAccountsModalOpen(true)}>Accounts</button>
           <button type="button" className="secondary-button" onClick={exportSnapshot}>Export</button>
           <button type="button" className="secondary-button" onClick={() => importInputRef.current?.click()}>Import</button>
+          <button
+            type="button"
+            className={`theme-toggle ${darkMode ? 'is-dark' : ''}`}
+            aria-pressed={darkMode}
+            aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={() => setDarkMode((current) => !current)}
+          >
+          </button>
           <input
             ref={importInputRef}
             className="hidden-input"
@@ -1408,11 +1452,7 @@ function App() {
                 return
               }
 
-              try {
-                await importSnapshot(file)
-              } catch {
-                alert('Unable to import that file. Please use a planner export JSON file.')
-              }
+              setPendingImportFile(file)
             }}
           />
         </div>
@@ -2213,6 +2253,31 @@ function App() {
               ) : null}
               <button type="button" className="primary-button" onClick={addAccount}>Save account</button>
             </section>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingImportFile ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Import planner data">
+          <div className="modal-card panel delete-modal import-modal">
+            <header className="modal-header">
+              <div>
+                <p className="eyebrow">Import planner data</p>
+                <h2>How should this file be applied?</h2>
+              </div>
+              <button type="button" className="icon-button" onClick={() => setPendingImportFile(null)}>Close</button>
+            </header>
+
+            <section className="delete-modal-content">
+              <p>{pendingImportFile.name}</p>
+              <p className="muted-copy">Merge keeps your current data and adds or updates matching records. Overwrite deletes the current planner data first.</p>
+            </section>
+
+            <div className="delete-modal-actions">
+              <button type="button" className="secondary-button" onClick={() => applyImport('merge')}>Merge</button>
+              <button type="button" className="primary-button" onClick={() => applyImport('overwrite')}>Overwrite</button>
+              <button type="button" className="link-button" onClick={() => setPendingImportFile(null)}>Cancel</button>
+            </div>
           </div>
         </div>
       ) : null}
