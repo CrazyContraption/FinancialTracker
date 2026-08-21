@@ -659,7 +659,7 @@ function App() {
   const [driftThresholdInput, setDriftThresholdInput] = useState('1,000.00')
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(THEME_KEY) === 'dark')
   const [modalDate, setModalDate] = useState<string | null>(null)
-  const [showAllUpcoming, setShowAllUpcoming] = useState(false)
+  const [upcomingVisibleCount, setUpcomingVisibleCount] = useState(10)
   const [modalTab, setModalTab] = useState<ModalTab>('day')
   const [accountsModalOpen, setAccountsModalOpen] = useState(false)
   const [editingStreamId, setEditingStreamId] = useState<string | null>(null)
@@ -945,10 +945,10 @@ function App() {
               : sourceStreamIdFromEvent(event.id, event.kind),
         })))
   }, [projection.days, selectedAccountId]) as UpcomingItem[]
-  const visibleUpcomingItems = mainUpcomingItems.slice(0, showAllUpcoming ? 30 : 10)
+  const visibleUpcomingItems = mainUpcomingItems.slice(0, upcomingVisibleCount)
 
   useEffect(() => {
-    setShowAllUpcoming(false)
+    setUpcomingVisibleCount(10)
   }, [mainUpcomingItems])
 
   function scrollToTop() {
@@ -1384,6 +1384,17 @@ function App() {
         <div>
           <p className="eyebrow">Finance Planner</p>
           <h1>{monthLabel(monthCursor)}</h1>
+          <div className="calendar-nav" aria-label="Calendar navigation">
+            <button type="button" className="navigation-button" onClick={() => {
+              const current = fromDateKey(monthCursor)
+              setMonthCursor(monthKey(new Date(current.getFullYear(), current.getMonth() - 1, 1)))
+            }} aria-label="Previous month">Prev</button>
+            <button type="button" className="secondary-button" onClick={() => setMonthCursor(currentMonthKey)}>Today</button>
+            <button type="button" className="navigation-button" onClick={() => {
+              const current = fromDateKey(monthCursor)
+              setMonthCursor(monthKey(new Date(current.getFullYear(), current.getMonth() + 1, 1)))
+            }} aria-label="Next month">Next</button>
+          </div>
         </div>
 
         <div className="toolbar-actions">
@@ -1407,30 +1418,9 @@ function App() {
             />
           </label>
 
-          <button
-            type="button"
-            className="icon-button"
-            onClick={() => {
-              const current = fromDateKey(monthCursor)
-              setMonthCursor(monthKey(new Date(current.getFullYear(), current.getMonth() - 1, 1)))
-            }}
-          >
-            Prev
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={() => {
-              const current = fromDateKey(monthCursor)
-              setMonthCursor(monthKey(new Date(current.getFullYear(), current.getMonth() + 1, 1)))
-            }}
-          >
-            Next
-          </button>
-          <button type="button" className="secondary-button" onClick={() => setMonthCursor(currentMonthKey)}>Today</button>
           <button type="button" className="secondary-button" onClick={() => setAccountsModalOpen(true)}>Accounts</button>
-          <button type="button" className="secondary-button" onClick={exportSnapshot}>Export</button>
-          <button type="button" className="secondary-button" onClick={() => importInputRef.current?.click()}>Import</button>
+          <button type="button" className="utility-button" onClick={exportSnapshot}>Export</button>
+          <button type="button" className="utility-button" onClick={() => importInputRef.current?.click()}>Import</button>
           <button
             type="button"
             className={`theme-toggle ${darkMode ? 'is-dark' : ''}`}
@@ -1579,20 +1569,29 @@ function App() {
         <h3>Upcoming events</h3>
         <ul className="event-list">
           {visibleUpcomingItems.map((item) => (
-            <li key={`${item.date}-${item.id}`}>
-              <span>
-                {formatCompactDate(item.date)} · {item.label}
-                {selectedAccountId === 'all'
-                  ? ` · ${accounts.find((account) => account.id === item.accountId)?.name ?? item.accountId}`
-                  : ''}
-              </span>
+            <li
+              key={`${item.date}-${item.id}`}
+              style={{ borderLeftColor: accounts.find((account) => account.id === item.accountId)?.color ?? '#0f766e' }}
+            >
+              <div className="event-copy">
+                <time className="event-date" dateTime={item.date}>{formatCompactDate(item.date)}</time>
+                <strong className="event-name">{item.label}</strong>
+                {selectedAccountId === 'all' ? (
+                  <span
+                    className="event-account"
+                    style={{ color: accounts.find((account) => account.id === item.accountId)?.color ?? '#0f766e' }}
+                  >
+                    {accounts.find((account) => account.id === item.accountId)?.name ?? item.accountId}
+                  </span>
+                ) : null}
+              </div>
               <div className="item-actions">
                 <strong className={item.amount >= 0 ? 'positive-value' : 'negative-value'}><CashAmount amount={item.amount} /></strong>
                 {item.sourceType !== 'interest' ? (
                   <button type="button" className="link-button" onClick={() => openUpcomingEdit(item)}>Edit</button>
                 ) : null}
                 {item.sourceType !== 'interest' ? (
-                  <button type="button" className="link-button" onClick={() => deleteUpcomingItem(item)}>Delete</button>
+                  <button type="button" className="danger-button" onClick={() => deleteUpcomingItem(item)}>Delete</button>
                 ) : null}
               </div>
             </li>
@@ -1600,8 +1599,8 @@ function App() {
           {!mainUpcomingItems.length ? <li><span>None</span></li> : null}
         </ul>
         <div className="upcoming-footer-actions">
-          {mainUpcomingItems.length > 10 && !showAllUpcoming ? (
-            <button type="button" className="secondary-button show-more-button" onClick={() => setShowAllUpcoming(true)}>
+          {upcomingVisibleCount < mainUpcomingItems.length ? (
+            <button type="button" className="secondary-button show-more-button" onClick={() => setUpcomingVisibleCount((current) => Math.min(current + 10, mainUpcomingItems.length))}>
               Show more
             </button>
           ) : <span />}
@@ -1612,17 +1611,17 @@ function App() {
       </section>
 
       {modalDate ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Day details">
-          <div className="modal-card panel">
+        <div className="modal-backdrop day-modal-backdrop" role="dialog" aria-modal="true" aria-label="Day details">
+          <div className="modal-card day-modal panel">
             <header className="modal-header">
               <div>
                 <p className="eyebrow">Selected day</p>
                 <h2>{formatShortDate(modalDate)}</h2>
               </div>
               <div className="modal-header-actions">
-                <button type="button" className="icon-button" onClick={() => moveModalDay(-1)} disabled={!modalDate || cashFlowDates.indexOf(modalDate) <= 0}>Previous</button>
-                <button type="button" className="icon-button" onClick={() => moveModalDay(1)} disabled={!modalDate || cashFlowDates.indexOf(modalDate) === cashFlowDates.length - 1}>Next</button>
-                <button type="button" className="icon-button" onClick={closeModal}>Close</button>
+                <button type="button" className="navigation-button" onClick={() => moveModalDay(-1)} disabled={!modalDate || cashFlowDates.indexOf(modalDate) <= 0}>Previous</button>
+                <button type="button" className="navigation-button" onClick={() => moveModalDay(1)} disabled={!modalDate || cashFlowDates.indexOf(modalDate) === cashFlowDates.length - 1}>Next</button>
+                <button type="button" className="secondary-button modal-close-button" onClick={closeModal}>Close</button>
               </div>
             </header>
 
@@ -1903,7 +1902,7 @@ function App() {
                   </label>
                 ) : null}
 
-                <button type="button" className="primary-button" onClick={addTransaction}>{editingStreamId ? 'Save transaction edits' : 'Save transaction'}</button>
+                <button type="button" className="primary-button transaction-submit" onClick={addTransaction}>{editingStreamId ? 'Save transaction edits' : 'Save transaction'}</button>
               </section>
             ) : null}
 
@@ -1984,7 +1983,7 @@ function App() {
                             )}
                             <button type="button" className="link-button" onClick={() => editStream(stream)}>Edit</button>
                             <button type="button" className="link-button" onClick={() => copyStream(stream)}>Copy</button>
-                            <button type="button" className="link-button" onClick={() => removeStream(stream.id)}>Remove</button>
+                            <button type="button" className="danger-button" onClick={() => removeStream(stream.id)}>Remove</button>
                           </div>
                         </li>
                       )
@@ -2011,7 +2010,7 @@ function App() {
                           <strong className={checkpoint.actualBalance >= 0 ? 'positive-value' : 'negative-value'}><CashAmount amount={checkpoint.actualBalance} /></strong>
                           <button type="button" className="link-button" onClick={() => editCheckpoint(checkpoint)}>Edit</button>
                           <button type="button" className="link-button" onClick={() => copyCheckpoint(checkpoint)}>Copy</button>
-                          <button type="button" className="link-button" onClick={() => removeCheckpoint(checkpoint.id)}>Remove</button>
+                          <button type="button" className="danger-button" onClick={() => removeCheckpoint(checkpoint.id)}>Remove</button>
                         </div>
                       </li>
                     ))}
@@ -2177,7 +2176,7 @@ function App() {
                       ) : null}
                       <button
                         type="button"
-                        className="link-button"
+                        className="danger-button account-remove"
                         onClick={() => removeAccount(account.id)}
                         disabled={accounts.length <= 1}
                       >
@@ -2251,7 +2250,7 @@ function App() {
                   </label>
                 </>
               ) : null}
-              <button type="button" className="primary-button" onClick={addAccount}>Save account</button>
+              <button type="button" className="primary-button account-submit" onClick={addAccount}>Create account</button>
             </section>
           </div>
         </div>
@@ -2274,9 +2273,8 @@ function App() {
             </section>
 
             <div className="delete-modal-actions">
-              <button type="button" className="secondary-button" onClick={() => applyImport('merge')}>Merge</button>
-              <button type="button" className="primary-button" onClick={() => applyImport('overwrite')}>Overwrite</button>
-              <button type="button" className="link-button" onClick={() => setPendingImportFile(null)}>Cancel</button>
+              <button type="button" className="danger-button" onClick={() => applyImport('overwrite')}>Overwrite</button>
+              <button type="button" className="primary-button" onClick={() => applyImport('merge')}>Merge</button>
             </div>
           </div>
         </div>
@@ -2306,12 +2304,12 @@ function App() {
 
             <div className="delete-modal-actions">
               {pendingDelete.item.sourceType === 'checkpoint' ? (
-                <button type="button" className="primary-button" onClick={() => confirmUpcomingDelete()}>Delete checkpoint</button>
+                <button type="button" className="danger-button" onClick={() => confirmUpcomingDelete()}>Delete checkpoint</button>
               ) : (
                 <>
-                  <button type="button" className="secondary-button" onClick={() => confirmUpcomingDelete('one')}>Delete this one</button>
-                  <button type="button" className="secondary-button" onClick={() => confirmUpcomingDelete('future')}>Delete this and future</button>
-                  <button type="button" className="primary-button" onClick={() => confirmUpcomingDelete('series')}>Delete entire series</button>
+                  <button type="button" className="danger-button" onClick={() => confirmUpcomingDelete('one')}>Delete this one</button>
+                  <button type="button" className="danger-button" onClick={() => confirmUpcomingDelete('future')}>Delete this and future</button>
+                  <button type="button" className="danger-button" onClick={() => confirmUpcomingDelete('series')}>Delete entire series</button>
                 </>
               )}
               <button type="button" className="link-button" onClick={() => setPendingDelete(null)}>Cancel</button>

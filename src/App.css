@@ -51,6 +51,26 @@ h1 {
   align-items: end;
 }
 
+.calendar-nav {
+  margin-top: 0.55rem;
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.navigation-button {
+  border: 1px solid #0e7490;
+  background: transparent;
+  color: #0e7490;
+  border-radius: 999px;
+  padding: 0.2rem 0.85rem;
+}
+
+.navigation-button:hover {
+  background: rgba(14, 116, 144, 0.1);
+  transform: translateY(-1px);
+}
+
 .toolbar-actions label {
   display: flex;
   flex-direction: column;
@@ -292,6 +312,13 @@ select {
   background: rgba(255, 255, 255, 0.9);
 }
 
+input[type='color'] {
+  width: 3rem;
+  height: 2rem;
+  padding: 0.15rem;
+  cursor: pointer;
+}
+
 button {
   border: none;
   cursor: pointer;
@@ -321,6 +348,44 @@ select:focus-visible {
   color: #0f172a;
   border-radius: 999px;
   padding: 0.5rem 0.85rem;
+}
+
+.utility-button {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: transparent;
+  color: #64748b;
+  border-radius: 999px;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.82rem;
+}
+
+.utility-button:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+}
+
+.danger-button {
+  color: #b91c1c;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0.5rem 0.85rem;
+}
+
+.danger-button:hover {
+  background: rgba(185, 28, 28, 0.08);
+  transform: translateY(-1px);
+}
+
+.account-submit {
+  flex-basis: 100%;
+  align-self: flex-start;
+}
+
+.transaction-submit {
+  flex-basis: 100%;
+  align-self: flex-end;
+  margin-left: auto;
 }
 
 .theme-toggle {
@@ -418,12 +483,21 @@ select:focus-visible {
   z-index: 10;
 }
 
+.day-modal-backdrop {
+  align-items: flex-start;
+}
+
 .modal-card {
   width: min(980px, 100%);
   max-height: calc(100vh - 2rem);
   overflow: auto;
   padding: 1rem;
   animation: modal-rise 180ms ease;
+}
+
+.day-modal {
+  margin-top: 3rem;
+  max-height: calc(100vh - 4rem);
 }
 
 .delete-modal {
@@ -581,6 +655,7 @@ button:disabled {
 
 .event-list li {
   padding: 0.65rem 0.75rem;
+  border-left: 4px solid transparent;
   background: rgba(15, 23, 42, 0.05);
   border-radius: 12px;
   display: flex;
@@ -601,6 +676,11 @@ button:disabled {
   flex-wrap: wrap;
   justify-content: flex-end;
   min-width: 0;
+}
+
+.event-list li > .item-actions {
+  flex: 0 0 auto;
+  align-items: center;
 }
 
 .item-main {
@@ -653,6 +733,12 @@ button:disabled {
 
 .account-row .link-button {
   justify-self: start;
+}
+
+.account-row .account-remove {
+  align-self: end;
+  grid-column: -1;
+  justify-self: end;
 }
 
 @keyframes modal-rise {
@@ -811,6 +897,11 @@ button:disabled {
     max-height: calc(100vh - 1rem);
   }
 
+  .day-modal {
+    margin-top: 0.5rem;
+    max-height: calc(100vh - 1rem);
+  }
+
   .modal-header {
     align-items: flex-start;
   }
@@ -822,6 +913,10 @@ button:disabled {
   }
 
   .modal-header-actions .icon-button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .modal-header-actions .modal-close-button {
     grid-column: 1 / -1;
   }
 
@@ -907,6 +1002,25 @@ button:disabled {
   background: #0f766e;
 }
 
+:root[data-theme='dark'] .utility-button {
+  border-color: rgba(148, 163, 184, 0.26);
+  color: #94a3b8;
+}
+
+:root[data-theme='dark'] .utility-button:hover {
+  background: rgba(148, 163, 184, 0.16);
+  color: #e2e8f0;
+}
+
+:root[data-theme='dark'] .danger-button {
+  color: #f87171;
+  background: transparent;
+}
+
+:root[data-theme='dark'] .danger-button:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
 :root[data-theme='dark'] .icon-button:hover,
 :root[data-theme='dark'] .secondary-button:hover,
 :root[data-theme='dark'] .tab:hover,
@@ -932,6 +1046,10 @@ button:disabled {
   background: rgba(148, 163, 184, 0.17);
 }
 
+:root[data-theme='dark'] .event-name {
+  color: #e2e8f0;
+}
+
 :root[data-theme='dark'] .summary-card {
   background: rgba(45, 212, 191, 0.12);
 }
@@ -953,4 +1071,40 @@ button:disabled {
 
 :root[data-theme='dark'] .status-strip {
   color: #cbd5e1;
+}
+
+.event-copy {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 0.45rem;
+  row-gap: 0.1rem;
+}
+
+.event-date {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.event-name {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.event-account {
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+:root[data-theme='dark'] .navigation-button {
+  border-color: #22d3ee;
+  color: #67e8f9;
+}
+
+:root[data-theme='dark'] .navigation-button:hover {
+  background: rgba(34, 211, 238, 0.12);
 }
