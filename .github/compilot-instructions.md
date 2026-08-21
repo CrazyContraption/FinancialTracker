@@ -4,3 +4,4 @@ This workspace contains a React + TypeScript finance planner.
 - Prefer pure helper functions for date math and balance projection.
 - Preserve leap-year handling, checkpoint drift alerts, and multi-account support.
 - Use `apply_patch` for manual file edits.
+- Ensure README.md stays up-to-date with mojor revisions
