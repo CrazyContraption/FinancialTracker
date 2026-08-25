@@ -19,6 +19,15 @@ import type {
   MoneyStream,
   StreamKind,
 } from './finance'
+import {
+  decryptVault,
+  encryptVault,
+  hashUsername,
+  lookupVault,
+  pushVault,
+  registerVault,
+  vaultErrorStatus,
+} from './vault'
 
 type ModalTab = 'day' | 'transaction' | 'reconcile'
 type EditScope = 'future' | 'all'
@@ -79,6 +88,13 @@ type PlannerSnapshot = {
   checkpoints: Checkpoint[]
 }
 
+type VaultSession = {
+  usernameHash: string
+  password: string
+  salt: string
+  updatedAt: string
+}
+
 type UpcomingItem = {
   date: string
   id: string
@@ -95,6 +111,8 @@ const LEGACY_STORAGE_KEY = 'finance-planner-v1'
 const SELECTED_ACCOUNT_KEY = 'finance-planner-selected-account'
 const LAST_ACTIVE_ACCOUNT_KEY = 'finance-planner-last-active-account'
 const THEME_KEY = 'finance-planner-theme'
+const VAULT_META_KEY = 'finance-planner-vault-meta'
+const VAULT_SESSION_KEY = 'finance-planner-vault-session'
 const weekdayLabels = weekdayNames()
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -667,11 +685,36 @@ function App() {
   const [editingCheckpointId, setEditingCheckpointId] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [vaultSession, setVaultSession] = useState<VaultSession | null>(null)
+  const [vaultMode, setVaultMode] = useState<'login' | 'register'>('login')
+  const [vaultUsername, setVaultUsername] = useState('')
+  const [vaultPassword, setVaultPassword] = useState('')
+  const [vaultBusy, setVaultBusy] = useState(false)
+  const [vaultInitializing, setVaultInitializing] = useState(true)
+  const [vaultReady, setVaultReady] = useState(false)
+  const [vaultError, setVaultError] = useState('')
+  const lastSyncedPayloadRef = useRef('')
 
   useEffect(() => {
     document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
     localStorage.setItem(THEME_KEY, darkMode ? 'dark' : 'light')
   }, [darkMode])
+
+  useEffect(() => {
+    const modalOpen = Boolean(modalDate || accountsModalOpen || passwordModalOpen || pendingImportFile || pendingDelete)
+    const previousOverflow = document.body.style.overflow
+    if (modalOpen) {
+      document.body.style.overflow = 'hidden'
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [accountsModalOpen, modalDate, passwordModalOpen, pendingDelete, pendingImportFile])
 
   const [streamDraft, setStreamDraft] = useState<StreamDraft>({
     accountId: snapshot.accounts[0]?.id ?? '',
@@ -749,6 +792,68 @@ function App() {
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(save))
   }, [accounts, checkpoints, streams])
+
+  useEffect(() => {
+    if (!vaultSession || !vaultReady) {
+      return
+    }
+
+    const payload: PlannerSnapshot = {
+      version: 2,
+      savedAt: new Date().toISOString(),
+      accounts,
+      streams,
+      checkpoints,
+    }
+    const payloadText = JSON.stringify(payload)
+    if (payloadText === lastSyncedPayloadRef.current) {
+      return
+    }
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const blob = await encryptVault(payload, vaultSession.password, vaultSession.salt)
+        const result = await pushVault(vaultSession.usernameHash, vaultSession.salt, blob, vaultSession.updatedAt)
+        lastSyncedPayloadRef.current = payloadText
+        setVaultSession((current) => current ? { ...current, updatedAt: result.updated_at } : current)
+        localStorage.setItem(VAULT_META_KEY, JSON.stringify({ salt: vaultSession.salt, updatedAt: result.updated_at }))
+      } catch (error) {
+        if (vaultErrorStatus(error) !== 409) {
+          setVaultError('Unable to sync your encrypted planner data.')
+          return
+        }
+
+        try {
+          const remote = await lookupVault(vaultSession.usernameHash)
+          const remoteSnapshot = parseSnapshot(JSON.stringify(await decryptVault<PlannerSnapshot>(remote.blob, vaultSession.password, remote.salt)))
+          if (!remoteSnapshot) {
+            throw new Error('Invalid remote planner data')
+          }
+          const mergeById = <T extends { id: string }>(remoteItems: T[], localItems: T[]) => {
+            const localById = new Map(localItems.map((item) => [item.id, item]))
+            return [...remoteItems.map((item) => localById.get(item.id) ?? item), ...localItems.filter((item) => !remoteItems.some((remoteItem) => remoteItem.id === item.id))]
+          }
+          const merged = {
+            ...remoteSnapshot,
+            accounts: mergeById(remoteSnapshot.accounts, accounts),
+            streams: mergeById(remoteSnapshot.streams, streams),
+            checkpoints: mergeById(remoteSnapshot.checkpoints, checkpoints),
+          }
+          setAccounts(merged.accounts)
+          setStreams(merged.streams)
+          setCheckpoints(merged.checkpoints)
+          const blob = await encryptVault(merged, vaultSession.password, remote.salt)
+          const result = await pushVault(vaultSession.usernameHash, remote.salt, blob, remote.updated_at)
+          lastSyncedPayloadRef.current = JSON.stringify(merged)
+          setVaultSession((current) => current ? { ...current, salt: remote.salt, updatedAt: result.updated_at } : current)
+        } catch {
+          setVaultError('Your planner changed elsewhere and could not be merged. Please sign in again.')
+        }
+      }
+    }, 400)
+
+    return () => window.clearTimeout(timer)
+  }, [accounts, checkpoints, streams, vaultReady, vaultSession])
 
   useEffect(() => {
     localStorage.setItem(SELECTED_ACCOUNT_KEY, selectedAccountId)
@@ -1378,6 +1483,145 @@ function App() {
     }
   }
 
+  async function authenticateVault(usernameInput = vaultUsername, passwordInput = vaultPassword) {
+    const username = usernameInput.trim()
+    if (!username || !passwordInput) {
+      setVaultError('Enter both a username and password.')
+      return
+    }
+
+    setVaultBusy(true)
+    setVaultError('')
+    try {
+      const usernameHash = await hashUsername(username)
+      if (vaultMode === 'register') {
+        const registration = await registerVault(usernameHash)
+        const localPayload: PlannerSnapshot = {
+          version: 2,
+          savedAt: new Date().toISOString(),
+          accounts: snapshot.accounts,
+          streams: snapshot.streams,
+          checkpoints: snapshot.checkpoints,
+        }
+        const blob = await encryptVault(localPayload, passwordInput, registration.salt)
+        const pushed = await pushVault(usernameHash, registration.salt, blob, registration.updated_at)
+        setVaultSession({ usernameHash, password: passwordInput, salt: registration.salt, updatedAt: pushed.updated_at })
+        localStorage.setItem(VAULT_META_KEY, JSON.stringify({ salt: registration.salt, updatedAt: pushed.updated_at }))
+        lastSyncedPayloadRef.current = JSON.stringify(localPayload)
+      } else {
+        const remote = await lookupVault(usernameHash)
+        const remoteSnapshot = parseSnapshot(JSON.stringify(await decryptVault<PlannerSnapshot>(remote.blob, passwordInput, remote.salt)))
+        if (!remoteSnapshot) {
+          throw new Error('Invalid planner data')
+        }
+        setAccounts(remoteSnapshot.accounts)
+        setStreams(remoteSnapshot.streams)
+        setCheckpoints(remoteSnapshot.checkpoints)
+        setVaultSession({ usernameHash, password: passwordInput, salt: remote.salt, updatedAt: remote.updated_at })
+        localStorage.setItem(VAULT_META_KEY, JSON.stringify({ salt: remote.salt, updatedAt: remote.updated_at }))
+        lastSyncedPayloadRef.current = JSON.stringify(remoteSnapshot)
+      }
+      localStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ username, password: passwordInput }))
+      setVaultPassword('')
+      setVaultReady(true)
+    } catch (error) {
+      const status = vaultErrorStatus(error)
+      setVaultError(status === 404 ? 'Account not found.' : status === 409 ? 'That username is already registered.' : 'Unable to sign in. Check your credentials and connection.')
+    } finally {
+      setVaultBusy(false)
+      setVaultInitializing(false)
+    }
+  }
+
+  async function changeVaultPassword() {
+    if (!vaultSession) {
+      return
+    }
+    if (!newPassword) {
+      setPasswordError('Enter a new password.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('The passwords do not match.')
+      return
+    }
+
+    setVaultBusy(true)
+    setPasswordError('')
+    try {
+      const payload: PlannerSnapshot = {
+        version: 2,
+        savedAt: new Date().toISOString(),
+        accounts,
+        streams,
+        checkpoints,
+      }
+      const blob = await encryptVault(payload, newPassword, vaultSession.salt)
+      const result = await pushVault(vaultSession.usernameHash, vaultSession.salt, blob, vaultSession.updatedAt)
+      setVaultSession((current) => current ? { ...current, password: newPassword, updatedAt: result.updated_at } : current)
+      localStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ username: vaultUsername, password: newPassword }))
+      localStorage.setItem(VAULT_META_KEY, JSON.stringify({ salt: vaultSession.salt, updatedAt: result.updated_at }))
+      lastSyncedPayloadRef.current = JSON.stringify(payload)
+      setNewPassword('')
+      setConfirmPassword('')
+      setPasswordModalOpen(false)
+    } catch {
+      setPasswordError('Unable to change the password. Please try again.')
+    } finally {
+      setVaultBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(VAULT_SESSION_KEY) ?? 'null') as { username?: string; password?: string } | null
+      if (saved?.username && saved.password) {
+        setVaultUsername(saved.username)
+        void authenticateVault(saved.username, saved.password)
+      } else {
+        setVaultInitializing(false)
+      }
+    } catch {
+      localStorage.removeItem(VAULT_SESSION_KEY)
+      setVaultInitializing(false)
+    }
+  }, [])
+
+  if (vaultInitializing || vaultBusy) {
+    return (
+      <main className="vault-gate" aria-busy="true">
+        <section className="vault-card panel loading-card" aria-label="Loading vault">
+          <span className="loading-spinner" aria-hidden="true" />
+          <p>{vaultInitializing ? 'Loading your vault...' : 'Updating your vault...'}</p>
+        </section>
+      </main>
+    )
+  }
+
+  if (!vaultSession) {
+    return (
+      <main className="vault-gate">
+        <section className="vault-card panel">
+          <p className="eyebrow">Finance Planner</p>
+          <h1>{vaultMode === 'login' ? 'Sign in to your vault' : 'Create your vault'}</h1>
+          <p className="vault-copy">Your planner is encrypted in this browser before it reaches the server.</p>
+          <p className="vault-warning">There is no password recovery. If you lose this password, your vault cannot be recovered.</p>
+          <form onSubmit={(event) => { event.preventDefault(); void authenticateVault() }}>
+            <label>Username<input autoComplete="username" value={vaultUsername} onChange={(event) => setVaultUsername(event.target.value)} /></label>
+            <label>Password<input type="password" autoComplete={vaultMode === 'login' ? 'current-password' : 'new-password'} value={vaultPassword} onChange={(event) => setVaultPassword(event.target.value)} /></label>
+            {vaultError && <p className="vault-error" role="alert">{vaultError}</p>}
+            <div className="vault-actions">
+              <button type="button" className="utility-button" onClick={() => { setVaultMode((current) => current === 'login' ? 'register' : 'login'); setVaultError('') }}>
+                {vaultMode === 'login' ? 'Create a new vault' : 'Back to sign in'}
+              </button>
+              <button type="submit" className="primary-button" disabled={vaultBusy}>{vaultBusy ? 'Working...' : vaultMode === 'login' ? 'Sign in' : 'Create account'}</button>
+            </div>
+          </form>
+        </section>
+      </main>
+    )
+  }
+
   return (
     <div className="app-shell">
       <header className="toolbar panel">
@@ -1431,6 +1675,8 @@ function App() {
           <button type="button" className="secondary-button toolbar-account-button" onClick={() => setAccountsModalOpen(true)}>Accounts</button>
           <button type="button" className="utility-button" onClick={() => importInputRef.current?.click()}>Import</button>
           <button type="button" className="utility-button" onClick={exportSnapshot}>Export</button>
+          <button type="button" className="utility-button" onClick={() => { setPasswordError(''); setPasswordModalOpen(true) }}>Change password</button>
+          <button type="button" className="utility-button" onClick={() => { setVaultSession(null); setVaultReady(false); setVaultMode('login'); setVaultUsername(''); setVaultPassword(''); localStorage.removeItem(VAULT_SESSION_KEY) }}>Sign out</button>
           <input
             ref={importInputRef}
             className="hidden-input"
@@ -1612,8 +1858,8 @@ function App() {
       </section>
 
       {modalDate ? (
-        <div className="modal-backdrop day-modal-backdrop" role="dialog" aria-modal="true" aria-label="Day details">
-          <div className="modal-card day-modal panel">
+        <div className="modal-backdrop day-modal-backdrop" role="dialog" aria-modal="true" aria-label="Day details" onClick={(event) => { if (event.target === event.currentTarget) closeModal() }}>
+          <div className="modal-card day-modal panel" onClick={(event) => event.stopPropagation()}>
             <header className="modal-header">
               <div>
                 <p className="eyebrow">Selected day</p>
@@ -2025,8 +2271,8 @@ function App() {
       ) : null}
 
       {accountsModalOpen ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Accounts">
-          <div className="modal-card panel">
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Accounts" onClick={(event) => { if (event.target === event.currentTarget) setAccountsModalOpen(false) }}>
+          <div className="modal-card panel" onClick={(event) => event.stopPropagation()}>
             <header className="modal-header">
               <div>
                 <p className="eyebrow">Accounts</p>
@@ -2257,9 +2503,39 @@ function App() {
         </div>
       ) : null}
 
+      {passwordModalOpen ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Change vault password" onClick={(event) => { if (event.target === event.currentTarget && !vaultBusy) setPasswordModalOpen(false) }}>
+          <div className="modal-card panel delete-modal password-modal" onClick={(event) => event.stopPropagation()}>
+            <header className="modal-header">
+              <div>
+                <p className="eyebrow">Vault security</p>
+                <h2>Change password</h2>
+              </div>
+              <button type="button" className="icon-button" onClick={() => setPasswordModalOpen(false)}>Close</button>
+            </header>
+            <p className="muted-copy">Your planner will be re-encrypted with the new password and uploaded. There is no password recovery if you lose it.</p>
+            <div className="password-form">
+              <label>
+                New password
+                <input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+              </label>
+              <label>
+                Confirm new password
+                <input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+              </label>
+              {passwordError && <p className="vault-error" role="alert">{passwordError}</p>}
+            </div>
+            <div className="password-actions">
+              <button type="button" className="utility-button" onClick={() => setPasswordModalOpen(false)} disabled={vaultBusy}>Cancel</button>
+              <button type="button" className="primary-button" onClick={() => void changeVaultPassword()} disabled={vaultBusy}>{vaultBusy ? 'Working...' : 'Confirm'}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {pendingImportFile ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Import planner data">
-          <div className="modal-card panel delete-modal import-modal">
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Import planner data" onClick={(event) => { if (event.target === event.currentTarget) setPendingImportFile(null) }}>
+          <div className="modal-card panel delete-modal import-modal" onClick={(event) => event.stopPropagation()}>
             <header className="modal-header">
               <div>
                 <p className="eyebrow">Import planner data</p>
@@ -2282,8 +2558,8 @@ function App() {
       ) : null}
 
       {pendingDelete ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Delete event">
-          <div className="modal-card panel delete-modal">
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Delete event" onClick={(event) => { if (event.target === event.currentTarget) setPendingDelete(null) }}>
+          <div className="modal-card panel delete-modal" onClick={(event) => event.stopPropagation()}>
             <header className="modal-header">
               <div>
                 <p className="eyebrow">Confirm delete</p>

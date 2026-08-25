@@ -2,7 +2,7 @@
 
 Finance Planner is a local-first personal finance calendar built with React, TypeScript, and Vite. It models accounts, recurring income and expenses, transfers, interest, and reconciliation checkpoints, then projects balances across a calendar view.
 
-The application runs entirely in the browser. Planner data is saved to `localStorage`; there is no server, account system, or remote database in the current implementation.
+The application runs in the browser. Planner data is encrypted client-side with Argon2id-derived AES-GCM keys before it is synchronized with the Cloudflare Worker API. The server stores no plaintext planner data, passwords, or decryption keys.
 
 ## Features
 
@@ -59,7 +59,36 @@ Dates that do not exist in a month are clamped to the last valid day where appro
 - Import a planner JSON export from a local file.
 - Imported files replace the current accounts, streams, and checkpoints after validation.
 
-The current application does not provide QR-code export/import, Brotli transfer, cloud synchronization, or merge-based import.
+The current application does not provide QR-code export/import or Brotli transfer. Cloud synchronization uses optimistic locking and merges local and remote records by ID when a stale update is detected.
+
+## Vault Database and API
+
+The production API is hosted at `https://user-vault-api.crazycontraptionmc.workers.dev`. The client sends username hashes and encrypted blobs only.
+
+The Cloudflare D1 database contains one `users` table:
+
+```sql
+CREATE TABLE users (
+  username_hash TEXT PRIMARY KEY,
+  salt TEXT NOT NULL,
+  blob TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+```
+
+The API provides these JSON endpoints:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /register` | Create an account from an Argon2id username hash and return a server-generated salt. |
+| `POST /lookup` | Return the salt, encrypted planner blob, and current update timestamp. |
+| `POST /push` | Store an encrypted blob when the supplied salt and `updated_at` match the current record. |
+
+The browser derives the username hash with Argon2id and derives an AES-GCM key from the password and server salt. Each encrypted blob contains a random 12-byte IV followed by the AES-GCM ciphertext. A `409` stale push triggers a lookup, ID-based merge, encryption, and retry.
+
+For convenience, the browser remembers the username and password locally and performs a fresh lookup on startup. Remove the saved browser session or use **Sign out** on shared devices.
+
+Vault accounts are non-recoverable. There is no password reset or recovery key. The **Change password** action re-encrypts the current planner with the new password and uploads it using the existing server salt; losing the new password makes the encrypted vault permanently inaccessible.
 
 ## Getting Started
 
@@ -166,8 +195,10 @@ The application uses these browser storage keys:
 | `finance-planner-v1` | Legacy snapshot fallback |
 | `finance-planner-selected-account` | Current account-view selection |
 | `finance-planner-last-active-account` | Last specific account selected |
+| `finance-planner-vault-session` | Locally remembered vault username and password |
+| `finance-planner-vault-meta` | Latest vault salt and update timestamp |
 
-State is written to `finance-planner-v2` whenever accounts, streams, or checkpoints change. Clearing browser storage removes the local planner data unless it has first been exported.
+State is written to `finance-planner-v2` whenever accounts, streams, or checkpoints change, and encrypted state is pushed to the vault after a short debounce. Clearing browser storage removes the local planner data and remembered vault session unless it has first been exported.
 
 ## Import and Export
 
@@ -183,7 +214,7 @@ Because data is local to the browser, regular exports are the project’s curren
 
 ## Deployment
 
-The workflow in `.github/workflows/build-gh-pages.yml` runs when changes are pushed to `main` or when manually dispatched. It checks out the repository, installs Node.js 20, runs `npm ci`, builds with a repository-specific GitHub Pages base path, and publishes `dist/` to the `gh-pages` branch.
+The workflow in `.github/workflows/build-gh-pages.yml` runs when changes are pushed to `main` or when manually dispatched. It checks out the repository, installs Node.js 20, runs `npm ci`, builds with a repository-specific GitHub Pages base path, and publishes `dist/` to the `gh-pages` branch. The production client calls the Worker directly, so the Worker must allow the deployed Pages origin in its CORS response and handle `OPTIONS` requests.
 
 To use this workflow, configure GitHub Pages to serve from the `gh-pages` branch and allow the workflow to write repository contents.
 

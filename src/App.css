@@ -503,6 +503,7 @@ select:focus-visible {
   max-height: calc(100vh - 2rem);
   overflow: auto;
   padding: 1rem;
+  margin-bottom: 0.75rem;
   animation: modal-rise 180ms ease;
 }
 
@@ -857,12 +858,14 @@ button:disabled {
   }
 
   .toolbar-actions .utility-button {
-    grid-row: 3;
+    grid-row: auto;
   }
 
   .toolbar-actions button {
     padding: 0.45rem 0.5rem;
     line-height: 1.15;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .calendar-grid {
@@ -1132,4 +1135,117 @@ button:disabled {
 
 :root[data-theme='dark'] .navigation-button:hover {
   background: rgba(34, 211, 238, 0.12);
+}
+
+.vault-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+}
+
+.vault-card {
+  width: min(100%, 30rem);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.vault-card h1 {
+  font-size: clamp(1.8rem, 5vw, 2.8rem);
+}
+
+.vault-copy {
+  color: #475569;
+  max-width: 30rem;
+}
+
+.vault-card label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.vault-card form {
+  display: grid;
+  gap: 1rem;
+}
+
+.vault-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.vault-actions > button,
+.password-actions > button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.vault-warning {
+  padding: 0.75rem;
+  border-left: 3px solid #b45309;
+  background: rgba(245, 158, 11, 0.1);
+  color: #92400e;
+  font-size: 0.88rem;
+}
+
+.password-form {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.password-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.password-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.vault-card input {
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.vault-error {
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+.loading-card {
+  align-items: center;
+  justify-content: center;
+  min-height: 10rem;
+  color: #475569;
+}
+
+.loading-spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid rgba(15, 118, 110, 0.2);
+  border-top-color: #0f766e;
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
