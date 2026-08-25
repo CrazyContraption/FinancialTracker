@@ -566,6 +566,14 @@ function parseSnapshot(raw: string | null): PlannerSnapshot | null {
   }
 }
 
+function plannerDataFingerprint(snapshot: Pick<PlannerSnapshot, 'accounts' | 'streams' | 'checkpoints'>) {
+  return JSON.stringify({
+    accounts: snapshot.accounts,
+    streams: snapshot.streams,
+    checkpoints: snapshot.checkpoints,
+  })
+}
+
 function readSnapshot(): PlannerSnapshot {
   const modern = parseSnapshot(localStorage.getItem(STORAGE_KEY))
   if (modern) {
@@ -805,7 +813,7 @@ function App() {
       streams,
       checkpoints,
     }
-    const payloadText = JSON.stringify(payload)
+    const payloadText = plannerDataFingerprint(payload)
     if (payloadText === lastSyncedPayloadRef.current) {
       return
     }
@@ -844,7 +852,7 @@ function App() {
           setCheckpoints(merged.checkpoints)
           const blob = await encryptVault(merged, vaultSession.password, remote.salt)
           const result = await pushVault(vaultSession.usernameHash, remote.salt, blob, remote.updated_at)
-          lastSyncedPayloadRef.current = JSON.stringify(merged)
+          lastSyncedPayloadRef.current = plannerDataFingerprint(merged)
           setVaultSession((current) => current ? { ...current, salt: remote.salt, updatedAt: result.updated_at } : current)
         } catch {
           setVaultError('Your planner changed elsewhere and could not be merged. Please sign in again.')
@@ -1507,7 +1515,7 @@ function App() {
         const pushed = await pushVault(usernameHash, registration.salt, blob, registration.updated_at)
         setVaultSession({ usernameHash, password: passwordInput, salt: registration.salt, updatedAt: pushed.updated_at })
         localStorage.setItem(VAULT_META_KEY, JSON.stringify({ salt: registration.salt, updatedAt: pushed.updated_at }))
-        lastSyncedPayloadRef.current = JSON.stringify(localPayload)
+        lastSyncedPayloadRef.current = plannerDataFingerprint(localPayload)
       } else {
         const remote = await lookupVault(usernameHash)
         const remoteSnapshot = parseSnapshot(JSON.stringify(await decryptVault<PlannerSnapshot>(remote.blob, passwordInput, remote.salt)))
@@ -1519,7 +1527,7 @@ function App() {
         setCheckpoints(remoteSnapshot.checkpoints)
         setVaultSession({ usernameHash, password: passwordInput, salt: remote.salt, updatedAt: remote.updated_at })
         localStorage.setItem(VAULT_META_KEY, JSON.stringify({ salt: remote.salt, updatedAt: remote.updated_at }))
-        lastSyncedPayloadRef.current = JSON.stringify(remoteSnapshot)
+        lastSyncedPayloadRef.current = plannerDataFingerprint(remoteSnapshot)
       }
       localStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ username, password: passwordInput }))
       setVaultPassword('')
@@ -1561,7 +1569,7 @@ function App() {
       setVaultSession((current) => current ? { ...current, password: newPassword, updatedAt: result.updated_at } : current)
       localStorage.setItem(VAULT_SESSION_KEY, JSON.stringify({ username: vaultUsername, password: newPassword }))
       localStorage.setItem(VAULT_META_KEY, JSON.stringify({ salt: vaultSession.salt, updatedAt: result.updated_at }))
-      lastSyncedPayloadRef.current = JSON.stringify(payload)
+      lastSyncedPayloadRef.current = plannerDataFingerprint(payload)
       setNewPassword('')
       setConfirmPassword('')
       setPasswordModalOpen(false)
